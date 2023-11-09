@@ -4,6 +4,8 @@ const cors = require('cors');
 const app = express();
 const bodyParser = require('body-parser')
 const mongoose = require('mongoose')
+const urlParser = require('url');
+const dns = require('dns');
 
 // Basic Configuration
 const port = process.env.PORT || 3000;
@@ -35,38 +37,30 @@ app.get('/', function(req, res) {
 // Your first API endpoint
 app.post('/api/shorturl', function(req, res) {
   const text = req.body.url;
-  function isValidUrl(text) {
-    try {
-      new URL(text);
-      return true;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  if(isValidUrl(text) === true) {
-    // Hash Function to shorten the url string
-    const simpleHash = (str) => {
-      let hash = 0
-      for (let i = 0; i < str.length; i++) {
-        hash = (hash << 5) - hash + str.charCodeAt(i)
-        hash &= hash // Convert to 32bit integer
+  dns.lookup(urlParser.parse(text).hostname, (err, address) =>{
+    if(!address) {res.json({error: 'invalid url'})}
+    else {
+      // Hash Function to shorten the url string
+      const simpleHash = (str) => {
+        let hash = 0
+        for (let i = 0; i < str.length; i++) {
+          hash = (hash << 5) - hash + str.charCodeAt(i)
+          hash &= hash // Convert to 32bit integer
+        }
+        return (hash >>> 0).toString(36)
       }
-      return (hash >>> 0).toString(36)
+    
+      // Save the url and the hash to the DB
+      let url = new URI({
+        full: text,
+        short: simpleHash(text)
+      });
+      url.save()
+      
+      // Send JSON Response
+      res.json({original_url: url.full, short_url: url.short});
     }
-    
-    // Save the url and the hash to the DB
-    let url = new URI({
-      full: text,
-      short: simpleHash(text)
-    });
-    url.save()
-    
-    // Send JSON Response
-    res.json({original_url: url.full, short_url: url.short});
-  } else {
-    res.json({error: 'invalid url'});
-  }
+  });
 })
 
 app.get('/api/shorturl/:shorturl', async (req, res) => {
